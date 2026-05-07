@@ -46,8 +46,8 @@ RUN mkdir -p storage/framework/sessions \
     && chmod -R 777 storage \
     && chmod -R 777 bootstrap/cache
 
-# Use .env.example as base .env (Railway env vars will override)
-RUN cp .env.example .env
+# Ensure no local .env file exists so Laravel uses Railway system variables exclusively
+RUN rm -f .env
 
 # Create startup script
 RUN echo '#!/bin/sh' > /app/start.sh && \
