@@ -17,10 +17,9 @@ RUN apt-get update && apt-get install -y \
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Set working directory
 WORKDIR /app
 
-# Copy composer files first (for caching)
+# Copy composer files first (layer cache)
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
 
@@ -28,30 +27,35 @@ RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interactio
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Copy the rest of the application
+# Copy the rest
 COPY . .
 
-# Run post-install scripts
-RUN composer dump-autoload --optimize \
-    && php artisan package:discover --ansi || true
+# Post-install
+RUN composer dump-autoload --optimize
 
 # Build frontend assets
 RUN npm run build
 
-# Create storage directories
+# Create required directories
 RUN mkdir -p storage/framework/{sessions,views,cache} \
     && mkdir -p storage/logs \
-    && chmod -R 775 storage bootstrap/cache
+    && mkdir -p bootstrap/cache \
+    && chmod -R 777 storage bootstrap/cache
 
-# Copy .env.example as .env if not exists
-RUN cp .env.example .env || true
+# Remove .env file so Laravel uses system env vars from Railway
+RUN rm -f .env
 
 EXPOSE 8080
 
-# Start command
-CMD php artisan config:cache && \
-    php artisan route:cache && \
-    php artisan view:cache && \
-    php artisan migrate --force && \
-    php artisan db:seed --force && \
-    php artisan serve --host=0.0.0.0 --port=${PORT:-8080}
+# Startup script - more resilient
+CMD sh -c "\
+    echo '--- HSalam Starting ---' && \
+    echo 'PHP version:' && php -v | head -1 && \
+    php artisan key:generate --force || true && \
+    php artisan migrate --force 2>&1 || echo 'Migration skipped or failed' && \
+    php artisan db:seed --force 2>&1 || echo 'Seed skipped or already seeded' && \
+    php artisan config:clear && \
+    php artisan route:clear && \
+    php artisan view:clear && \
+    echo '--- Starting server on port ${PORT:-8080} ---' && \
+    php artisan serve --host=0.0.0.0 --port=\${PORT:-8080}"
