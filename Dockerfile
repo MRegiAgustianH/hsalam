@@ -31,31 +31,61 @@ RUN npm ci
 COPY . .
 
 # Post-install
-RUN composer dump-autoload --optimize
+RUN composer dump-autoload --optimize \
+    && php artisan package:discover --ansi 2>/dev/null || true
 
 # Build frontend assets
 RUN npm run build
 
-# Create required directories
-RUN mkdir -p storage/framework/{sessions,views,cache} \
+# Create all required Laravel directories
+RUN mkdir -p storage/framework/sessions \
+    && mkdir -p storage/framework/views \
+    && mkdir -p storage/framework/cache/data \
     && mkdir -p storage/logs \
     && mkdir -p bootstrap/cache \
-    && chmod -R 777 storage bootstrap/cache
+    && chmod -R 777 storage \
+    && chmod -R 777 bootstrap/cache
 
-# Remove .env file so Laravel uses system env vars from Railway
-RUN rm -f .env
+# Use .env.example as base .env (Railway env vars will override)
+RUN cp .env.example .env
+
+# Create startup script
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo 'set -e' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo 'echo "=== HSalam Starting ==="' >> /app/start.sh && \
+    echo 'php -v | head -1' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Ensure storage dirs exist and are writable' >> /app/start.sh && \
+    echo 'mkdir -p storage/framework/{sessions,views,cache/data} storage/logs bootstrap/cache' >> /app/start.sh && \
+    echo 'chmod -R 777 storage bootstrap/cache' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Clear all caches first' >> /app/start.sh && \
+    echo 'php artisan config:clear 2>/dev/null || true' >> /app/start.sh && \
+    echo 'php artisan cache:clear 2>/dev/null || true' >> /app/start.sh && \
+    echo 'php artisan route:clear 2>/dev/null || true' >> /app/start.sh && \
+    echo 'php artisan view:clear 2>/dev/null || true' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Run migrations' >> /app/start.sh && \
+    echo 'echo "Running migrations..."' >> /app/start.sh && \
+    echo 'php artisan migrate --force 2>&1 || echo "Migration warning (may already be migrated)"' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Seed database' >> /app/start.sh && \
+    echo 'echo "Seeding database..."' >> /app/start.sh && \
+    echo 'php artisan db:seed --force 2>&1 || echo "Seed warning (may already be seeded)"' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Cache config after env vars are available' >> /app/start.sh && \
+    echo 'php artisan config:cache 2>/dev/null || true' >> /app/start.sh && \
+    echo 'php artisan route:cache 2>/dev/null || true' >> /app/start.sh && \
+    echo 'php artisan view:cache 2>/dev/null || true' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo '# Storage link' >> /app/start.sh && \
+    echo 'php artisan storage:link 2>/dev/null || true' >> /app/start.sh && \
+    echo '' >> /app/start.sh && \
+    echo 'echo "=== Starting server on port ${PORT:-8080} ==="' >> /app/start.sh && \
+    echo 'exec php artisan serve --host=0.0.0.0 --port=${PORT:-8080}' >> /app/start.sh && \
+    chmod +x /app/start.sh
 
 EXPOSE 8080
 
-# Startup script - more resilient
-CMD sh -c "\
-    echo '--- HSalam Starting ---' && \
-    echo 'PHP version:' && php -v | head -1 && \
-    php artisan key:generate --force || true && \
-    php artisan migrate --force 2>&1 || echo 'Migration skipped or failed' && \
-    php artisan db:seed --force 2>&1 || echo 'Seed skipped or already seeded' && \
-    php artisan config:clear && \
-    php artisan route:clear && \
-    php artisan view:clear && \
-    echo '--- Starting server on port ${PORT:-8080} ---' && \
-    php artisan serve --host=0.0.0.0 --port=\${PORT:-8080}"
+CMD ["/app/start.sh"]
