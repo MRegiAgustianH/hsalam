@@ -74,10 +74,6 @@ RUN echo '#!/bin/sh' > /app/start.sh && \
     echo 'echo "Seeding database..."' >> /app/start.sh && \
     echo 'php artisan db:seed --force 2>&1 || echo "Seed warning (may already be seeded)"' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
-    echo '# Cache config after env vars are available' >> /app/start.sh && \
-    echo 'php artisan config:cache 2>/dev/null || true' >> /app/start.sh && \
-    echo 'php artisan route:cache 2>/dev/null || true' >> /app/start.sh && \
-    echo 'php artisan view:cache 2>/dev/null || true' >> /app/start.sh && \
     echo '' >> /app/start.sh && \
     echo '# Storage link' >> /app/start.sh && \
     echo 'php artisan storage:link 2>/dev/null || true' >> /app/start.sh && \
